@@ -14,14 +14,7 @@ const WELCOME_MESSAGE =
 
 const userCooldowns = new Map();
 const COOLDOWN_MS = 2000;
-<<<<<<< HEAD
 const ADMIN_CHAT_ID = parseInt(process.env.ADMIN_CHAT_ID, 10);
-=======
-<<<<<<< HEAD
-=======
-const ADMIN_CHAT_ID = parseInt(process.env.ADMIN_CHAT_ID, 10);
->>>>>>> 9d9db9f (Update bot.js to use environment variable for Admin)
->>>>>>> be0b255 (Update bot.js to use environment variable for Admin)
 
 function isRateLimited(chatId) {
   if (chatId === ADMIN_CHAT_ID) return false;
