@@ -1,0 +1,17 @@
+{
+  "name": "lotbot",
+  "version": "1.0.0",
+  "description": "Telegram bot that alerts users when EV parking chargers become available",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^16.4.5",
+    "node-cron": "^4.2.1",
+    "telegraf": "^4.16.3"
+  }
+}
