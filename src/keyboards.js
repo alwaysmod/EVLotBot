@@ -14,21 +14,6 @@ function searchResultsKeyboard(lots, action) {
   return { reply_markup: { inline_keyboard: rows } };
 }
 
-// Confirm or cancel a subscription (uses lot id throughout — avoids name-length issues)
-function confirmSubscribeKeyboard(lotId, chargeType) {
-  return {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: '✅ Confirm', style: 'success', callback_data: `confirm_sub:${chargeType}:id:${lotId}` },
-          { text: '❌ Cancel',  style: 'danger',  callback_data: 'cancel_sub' },
-        ],
-        [{ text: '🔙 Back', callback_data: `pick_venue:subscribe:id:${lotId}` }],
-      ],
-    },
-  };
-}
-
 // List subscriptions with unsubscribe buttons.
 // Each sub must have: display (button label), charge_type, lot_id (DB id)
 function subscriptionListKeyboard(subscriptions) {
@@ -46,8 +31,41 @@ function subscriptionListKeyboard(subscriptions) {
   };
 }
 
+/**
+ * Build an inline keyboard for the /nearby results message.
+ *
+ * @param {object[]} lots    - Array of lot rows (already sorted for display)
+ * @param {string}   sortMode - 'dist' | 'price'
+ * @param {number}   lat     - User latitude  (encoded in sort-toggle callbacks)
+ * @param {number}   lon     - User longitude (encoded in sort-toggle callbacks)
+ */
+function nearbyKeyboard(lots, sortMode, lat, lon) {
+  const latStr = lat.toFixed(6);
+  const lonStr = lon.toFixed(6);
+
+  // Sort toggle row
+  const distLabel = sortMode === 'dist' ? '📏 Distance ✓' : '📏 Distance';
+  const priceLabel = sortMode === 'price' ? '💰 Price ✓' : '💰 Price';
+  const toggleRow = [
+    { text: distLabel, callback_data: `nearby_sort:dist:${latStr}:${lonStr}` },
+    { text: priceLabel, callback_data: `nearby_sort:price:${latStr}:${lonStr}` },
+  ];
+
+  // One button per lot → reuse existing pick_venue detail flow
+  const lotRows = lots.map(lot => [{
+    text: `📍 ${lot.location_name || lot.name}`,
+    callback_data: `pick_venue:subscribe:id:${lot.id}`,
+  }]);
+
+  return {
+    reply_markup: {
+      inline_keyboard: [toggleRow, ...lotRows],
+    },
+  };
+}
+
 module.exports = {
   searchResultsKeyboard,
-  confirmSubscribeKeyboard,
-  subscriptionListKeyboard
+  subscriptionListKeyboard,
+  nearbyKeyboard,
 };

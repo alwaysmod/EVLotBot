@@ -8,6 +8,7 @@
     "start": "node src/index.js"
   },
   "dependencies": {
+    "@danielhaim/titlecaser": "^1.7.15",
     "axios": "^1.7.9",
     "better-sqlite3": "^11.7.0",
     "dotenv": "^16.4.5",

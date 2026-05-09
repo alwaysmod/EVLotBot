@@ -102,7 +102,7 @@ async function dispatchNotifications(bot, lotName, locationName, address, operat
   if (chatIds.length === 0) return;
 
   const displayLocation = toTitleCase(locationName || lotName);
-  const displayAddress  = toTitleCase(address) || 'N/A';
+  const displayAddress = toTitleCase(address) || 'N/A';
   const operatorDisplay = operator ? operatorLabel(operator) : null;
 
   const mapsUrl = latitude && longitude ? `https://www.google.com/maps?q=${latitude},${longitude}` : null;
@@ -174,13 +174,13 @@ async function runPollCycle(bot) {
 
       // Always register the location so it is searchable even with no charger data yet
       db.upsertLot({
-        name:         locName,
+        name: locName,
         locationName: locName,
-        address:      loc.address,
-        postalCode:   loc.postalCode,
-        latitude:     loc.latitude,
-        longitude:    loc.longtitude,
-        operator:     null,
+        address: loc.address,
+        postalCode: loc.postalCode,
+        latitude: loc.latitude,
+        longitude: loc.longtitude,
+        operator: null,
       });
 
       // Group charging points by operator
@@ -193,20 +193,20 @@ async function runPollCycle(bot) {
 
       for (const [opKey, points] of byOperator) {
         const operator = opKey === '__none__' ? null : opKey;
-        const lotName  = operator ? `${locName}|||${operator}` : locName;
+        const lotName = operator ? `${locName}|||${operator}` : locName;
 
         db.upsertLot({
-          name:         lotName,
+          name: lotName,
           locationName: locName,
-          address:      loc.address,
-          postalCode:   loc.postalCode,
-          latitude:     loc.latitude,
-          longitude:    loc.longtitude, // API has typo "longtitude"
-          operator:     operator,
+          address: loc.address,
+          postalCode: loc.postalCode,
+          latitude: loc.latitude,
+          longitude: loc.longtitude, // API has typo "longtitude"
+          operator: operator,
         });
 
         const chargerTypes = getChargerTypes(points);
-        const avail        = computeAvailabilityWithCounts(points);
+        const avail = computeAvailabilityWithCounts(points);
 
         // Remove stale entries for charger types no longer at this operator/location
         for (const chargeType of ['AC', 'DC']) {
@@ -216,10 +216,10 @@ async function runPollCycle(bot) {
         }
 
         for (const chargeType of chargerTypes) {
-          const counts         = avail[chargeType];
+          const counts = avail[chargeType];
           const isNowAvailable = counts.available > 0;
-          const price          = getPriceInfo(points, chargeType);
-          const prev           = db.getAvailabilityState(lotName, chargeType);
+          const price = getPriceInfo(points, chargeType);
+          const prev = db.getAvailabilityState(lotName, chargeType);
 
           if (!prev) {
             // First time: establish baseline, no notification
@@ -228,7 +228,7 @@ async function runPollCycle(bot) {
           }
 
           const wasAvailable = prev.is_available === 1;
-          const wasNotified  = prev.notified === 1;
+          const wasNotified = prev.notified === 1;
 
           if (isNowAvailable && (!wasAvailable || !wasNotified)) {
             db.upsertAvailabilityState(lotName, chargeType, true, counts.available, counts.total, price);
@@ -260,4 +260,4 @@ async function runPollCycle(bot) {
   }
 }
 
-module.exports = { runPollCycle, computeAvailabilityWithCounts, fetchEVData };
+module.exports = { runPollCycle };

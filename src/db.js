@@ -135,6 +135,7 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_lots_operator      ON lots(operator);
     CREATE INDEX IF NOT EXISTS idx_lots_location_name ON lots(location_name);
     CREATE INDEX IF NOT EXISTS idx_lots_name          ON lots(name);
+    CREATE INDEX IF NOT EXISTS idx_lots_latlon        ON lots(latitude, longitude);
   `);
 
   // Migration 3: add count columns to availability_state on existing DBs
@@ -157,13 +158,11 @@ function initSchema() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+const { TitleCaser } = require('../node_modules/@danielhaim/titlecaser/dist/titlecaser.module');
+const titlecaser = new TitleCaser();
 function toTitleCase(str) {
   if (!str) return str;
-  return str.replace(/\S+/g, w => {
-    if (w.length <= 2) return w;
-    if (/[a-zA-Z]/.test(w) && /[0-9]/.test(w)) return w;
-    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
-  });
+  return titlecaser.toTitleCase(str);
 }
 
 // ── Lot catalog ───────────────────────────────────────────────────────────────
@@ -183,19 +182,19 @@ const upsertLotStmt = () => getDb().prepare(`
 
 function upsertLot(lot) {
   upsertLotStmt().run({
-    name:          lot.name,
+    name: lot.name,
     location_name: toTitleCase(lot.locationName || lot.name),
-    address:       toTitleCase(lot.address) || null,
-    postal_code:   lot.postalCode || null,
-    latitude:      lot.latitude || null,
-    longitude:     lot.longitude || null,
-    operator:      lot.operator || null,
+    address: toTitleCase(lot.address) || null,
+    postal_code: lot.postalCode || null,
+    latitude: lot.latitude || null,
+    longitude: lot.longitude || null,
+    operator: lot.operator || null,
   });
 }
 
 function searchLots(query) {
-  const exact   = query.toLowerCase();
-  const prefix  = `${query}%`;
+  const exact = query.toLowerCase();
+  const prefix = `${query}%`;
   const contain = `%${query}%`;
   return getDb()
     .prepare(`
@@ -225,42 +224,6 @@ function getLotById(id) {
   return getDb().prepare(`SELECT * FROM lots WHERE id = ?`).get(id) || null;
 }
 
-function getLotsByPostalCode(postalCode) {
-  return getDb()
-    .prepare(`
-      SELECT l.id, l.name, l.location_name, l.address, l.latitude, l.longitude, l.operator,
-             ac.is_available AS ac_available, ac.lot_name IS NOT NULL AS has_ac,
-             ac.available_count AS ac_available_count, ac.total_count AS ac_total, ac.price_info AS ac_price,
-             dc.is_available AS dc_available, dc.lot_name IS NOT NULL AS has_dc,
-             dc.available_count AS dc_available_count, dc.total_count AS dc_total, dc.price_info AS dc_price,
-             MAX(ac.last_checked, dc.last_checked) AS last_checked
-      FROM lots l
-      LEFT JOIN availability_state ac ON l.name = ac.lot_name AND ac.charge_type = 'AC'
-      LEFT JOIN availability_state dc ON l.name = dc.lot_name AND dc.charge_type = 'DC'
-      WHERE l.postal_code = ?
-      ORDER BY l.operator, l.name
-    `)
-    .all(postalCode);
-}
-
-function getLotsByLocationName(locationName) {
-  return getDb()
-    .prepare(`
-      SELECT l.id, l.name, l.location_name, l.address, l.latitude, l.longitude, l.operator,
-             ac.is_available AS ac_available, ac.lot_name IS NOT NULL AS has_ac,
-             ac.available_count AS ac_available_count, ac.total_count AS ac_total, ac.price_info AS ac_price,
-             dc.is_available AS dc_available, dc.lot_name IS NOT NULL AS has_dc,
-             dc.available_count AS dc_available_count, dc.total_count AS dc_total, dc.price_info AS dc_price,
-             MAX(ac.last_checked, dc.last_checked) AS last_checked
-      FROM lots l
-      LEFT JOIN availability_state ac ON l.name = ac.lot_name AND ac.charge_type = 'AC'
-      LEFT JOIN availability_state dc ON l.name = dc.lot_name AND dc.charge_type = 'DC'
-      WHERE l.location_name = ?
-      ORDER BY l.operator, l.name
-    `)
-    .all(locationName);
-}
-
 function getLotsByLotId(lotId) {
   return getDb()
     .prepare(`
@@ -277,6 +240,48 @@ function getLotsByLotId(lotId) {
       ORDER BY l.operator, l.name
     `)
     .all(lotId);
+}
+
+/**
+ * Return the `limit` closest lots to (lat, lon).
+ *
+ * Uses a flat-earth approximation (accurate to < 0.1 % within 50 km) so we
+ * can do the distance calculation inside SQLite without trigonometry.
+ * A ±0.5° bounding box (~55 km at Singapore's latitude) pre-filters rows
+ * and keeps the query fast via the idx_lots_latlon index.
+ *
+ * One row per unique location_name is returned (the closest charger within
+ * each venue is representative), with full availability data attached.
+ */
+function getNearestLots(lat, lon, limit = 10) {
+  const cosLat = Math.cos(lat * Math.PI / 180);
+  // We deduplicate by location_name, keeping the row with the smallest dist_sq.
+  // SQLite MIN() in a GROUP BY picks an arbitrary row for other columns, but
+  // since all rows at the same venue share the same lat/lon this is fine.
+  return getDb()
+    .prepare(`
+      SELECT
+        l.id, l.name, l.location_name, l.address, l.latitude, l.longitude, l.operator,
+        MAX(ac.is_available) AS ac_available, MAX(ac.lot_name IS NOT NULL) AS has_ac,
+        MAX(ac.available_count) AS ac_available_count, MAX(ac.total_count) AS ac_total, MAX(ac.price_info) AS ac_price,
+        MAX(dc.is_available) AS dc_available, MAX(dc.lot_name IS NOT NULL) AS has_dc,
+        MAX(dc.available_count) AS dc_available_count, MAX(dc.total_count) AS dc_total, MAX(dc.price_info) AS dc_price,
+        (
+          (l.latitude  - @lat) * (l.latitude  - @lat) +
+          (@cosLat * (l.longitude - @lon)) * (@cosLat * (l.longitude - @lon))
+        ) AS dist_sq
+      FROM lots l
+      LEFT JOIN availability_state ac ON l.name = ac.lot_name AND ac.charge_type = 'AC'
+      LEFT JOIN availability_state dc ON l.name = dc.lot_name AND dc.charge_type = 'DC'
+      WHERE l.latitude  IS NOT NULL
+        AND l.longitude IS NOT NULL
+        AND l.latitude  BETWEEN @lat - 0.5 AND @lat + 0.5
+        AND l.longitude BETWEEN @lon - 0.5 AND @lon + 0.5
+      GROUP BY l.location_name
+      ORDER BY dist_sq ASC
+      LIMIT @limit
+    `)
+    .all({ lat, lon, cosLat, limit });
 }
 
 // ── Subscriptions ─────────────────────────────────────────────────────────────
@@ -417,9 +422,8 @@ module.exports = {
   searchLots,
   getLotByName,
   getLotById,
-  getLotsByPostalCode,
-  getLotsByLocationName,
   getLotsByLotId,
+  getNearestLots,
   addSubscription,
   removeSubscription,
   removeSubscriptionsForLot,
