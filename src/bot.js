@@ -12,7 +12,8 @@ const WELCOME_MESSAGE =
   `<b>Commands:</b>\n` +
   `🔍 Type in <b>name / address / postal code</b> to search\n` +
   `📍 /nearby — Find the 10 nearest charging spots\n` +
-  `🔔 /subs — Subscriptions`;
+  `🔔 /subs — Subscriptions\n` +
+  `ℹ️ /about — About this bot`;
 
 const userCooldowns = new Map();
 const COOLDOWN_MS = 2000;
@@ -36,6 +37,7 @@ async function createBot(token) {
       { command: 'start', description: '👋 Welcome' },
       { command: 'nearby', description: '📍 Find nearest EV chargers' },
       { command: 'subs', description: '🔔 Subscriptions' },
+      { command: 'about', description: 'ℹ️ About this bot' },
     ]);
     console.log('[bot] Commands registered with Telegram');
   } catch (err) {
@@ -57,6 +59,16 @@ async function createBot(token) {
       return { ...sub, display: `${loc} | ${op} (${sub.charge_type})` };
     });
     return ctx.reply('Your subscriptions (tap to unsubscribe):', kb.subscriptionListKeyboard(enriched));
+  });
+
+  // ── /about ─────────────────────────────────────────────────────────────────
+  bot.command('about', ctx => {
+    return ctx.reply(
+      `🚙 <b>EVLotBot</b> is a Telegram bot that helps you find available EV charging spots and notifies you when they become available.\n\n` +
+      `You can view the source code and contribute on GitHub:\n` +
+      `https://github.com/alwaysmod/EVLotBot`,
+      { parse_mode: 'HTML', disable_web_page_preview: true }
+    );
   });
 
   // ── /nearby ────────────────────────────────────────────────────────────────
@@ -276,7 +288,8 @@ async function createBot(token) {
       // Add colored markers for the lot
       if (lot.latitude && lot.longitude) {
         points.push(`[${lot.latitude},${lot.longitude},"${marker.rgb}"]`);
-        const popupText = `<b>${name}</b><br/>Price: ${priceStr}`;
+        const opLabel = lot.operator ? operatorLabel(lot.operator) : 'Unknown';
+        const popupText = `<b>${name}</b><br/>${opLabel} : ${priceStr}`;
 
         ammUrl += `&marker=latLng:${lot.latitude},${lot.longitude}!iwt:${b64(popupText)}`;
       }
